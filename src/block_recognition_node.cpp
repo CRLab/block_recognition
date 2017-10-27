@@ -125,14 +125,6 @@ void getCloud(const sensor_msgs::PointCloud2ConstPtr &points_msg)
 
     cloud = cloud_tmp;
 }
-//cv::Rect getImageRect(int &_pxMin, int &_pyMin)
-//{
-//    cout << "---> cropping image bounds: " << img_x_min << ", " << img_x_max << ", " << img_y_min << ", " << img_y_max << endl;
-//    _pxMin = img_x_min;
-//    _pyMin = img_y_min;
-//    cv::Rect rect(img_x_min, img_y_min, img_x_max - img_x_min, img_y_max - img_y_min);
-//    return rect;
-//}
 
 cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_cam)
 {
