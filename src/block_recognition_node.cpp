@@ -87,6 +87,7 @@ static void array_to_pose(const double* array, geometry_msgs::Pose &pose_msg)
     tf::Quaternion rot_q;
     rot_m.getRotation(rot_q);
     rot_q = rot_q * tf::Quaternion(tf::Vector3(1.0,0,0), M_PI/2.0);
+    rot_q = rot_q * tf::Quaternion(tf::Vector3(0.0,0,1.0), M_PI);
     tf::quaternionTFToMsg(rot_q, pose_msg.orientation);
 
     pose_msg.position.x = array[9];
