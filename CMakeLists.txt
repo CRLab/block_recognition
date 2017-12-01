@@ -9,20 +9,10 @@ find_package(catkin REQUIRED COMPONENTS roscpp tf geometry_msgs kdl_conversions
   image_transport cv_bridge image_geometry)
 
 ## System dependencies are found with CMake's conventions
-# Build vtk-stl converter
-find_package(VTK)
-
-IF(NOT VTK_FOUND)
-  message(FATAL_ERROR "VTK not found. VTK is not installed or cmake can not find it. Install VTK first and then try again.
-  If VTK is installed but cmake can not find it, set the VTK_DIR entry to the folder which contains the file VTKConfig.cmake")
-ENDIF(NOT VTK_FOUND)
-
-include(${VTK_USE_FILE})
 
 add_message_files(
-  FILES
-  PointSetShape.msg
-  RecognizedObjects.msg
+FILES
+DetectedBlock.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -43,7 +33,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES block_recognition
 #  CATKIN_DEPENDS other_catkin_pkg
- DEPENDS roscpp tf geometry_msgs visualization_msgs sensor_msgs pcl_ros resource_retriever nodelet block_recognition
+ DEPENDS roscpp tf geometry_msgs visualization_msgs sensor_msgs pcl_ros resource_retriever nodelet
 )
 
 ###########
@@ -87,7 +77,6 @@ MESSAGE( STATUS "catkin_LIBRARIES " ${catkin_LIBRARIES} )
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
-  ${VTK_LIBRARIES}
 )
 
 #############

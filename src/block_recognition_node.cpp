@@ -18,18 +18,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
-#include <vtkPointData.h>
-#include <vtkPolyDataReader.h>
-#include <vtkTransformPolyDataFilter.h>
-#include <vtkPolyData.h>
-#include <vtkSmartPointer.h>
-#include <vtkFloatArray.h>
-#include <vtkTransform.h>
-
-#include <UserData.h>
-#include <PointSetShape.h>
 #include <block_recognition/FindObjects.h>
-#include <block_recognition/RecognizedObjects.h>
 
 #include <tf_conversions/tf_kdl.h>
 #include <resource_retriever/retriever.h>
@@ -39,6 +28,12 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/kdtree.h>
+
+#include <block_recognition/DetectedBlock.h>
+
+#include <ros/package.h>
+
+#include <string>
 
 using namespace std;
 using namespace cv;
@@ -63,37 +58,14 @@ int img_x_max;
 int img_y_max;
 
 tf::TransformListener *tf_listener;
-std::string block_model_vtk;
-std::string block_model_stl;
-vtkPolyData *block_model_data;
-UserData *block_user_data_small;
-UserData *block_user_data_medium;
-UserData *block_user_data_large;
-void load_block_model();
-ros::Publisher objects_pub_;
+std::string block_user_data_small = "block_50";
+std::string block_user_data_medium = "block_64";
+std::string block_user_data_large = "block_76";
 ros::Publisher markers_pub_;
 
 boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB> > cloud;
 
 boost::mutex buffer_mutex_;
-std::list<vtkSmartPointer<vtkPolyDataReader> > readers_;
-
-static void array_to_pose(const double* array, geometry_msgs::Pose &pose_msg)
-{
-    tf::Matrix3x3 rot_m =  tf::Matrix3x3(
-            array[0],array[1],array[2],
-            array[3],array[4],array[5],
-            array[6],array[7],array[8]);
-    tf::Quaternion rot_q;
-    rot_m.getRotation(rot_q);
-    rot_q = rot_q * tf::Quaternion(tf::Vector3(1.0,0,0), M_PI/2.0);
-    rot_q = rot_q * tf::Quaternion(tf::Vector3(0.0,0,1.0), M_PI);
-    tf::quaternionTFToMsg(rot_q, pose_msg.orientation);
-
-    pose_msg.position.x = array[9];
-    pose_msg.position.y = array[10];
-    pose_msg.position.z = array[11];
-}
 
 void saveRGBImg(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -140,10 +112,10 @@ cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_ca
     world_min_pt_3d.setZ(z_clip_min);
     tf::Vector3 camera_min_pt_3d = tf_to_cam * world_min_pt_3d;
 
-    cout << "---> World cropping bounds: " << x_clip_min << ", " << x_clip_max << ", " << y_clip_min << ", " << y_clip_max << ", " << z_clip_min << ", " << z_clip_max << std::endl;
+    ROS_INFO_STREAM("---> World cropping bounds: " << x_clip_min << ", " << x_clip_max << ", " << y_clip_min << ", " << y_clip_max << ", " << z_clip_min << ", " << z_clip_max << std::endl);
 
     cv::Point3d min_pt_3d(camera_min_pt_3d.x(), camera_min_pt_3d.y(), camera_min_pt_3d.z());
-    std::cout << "min_pt_3d: " << min_pt_3d.x << " " << min_pt_3d.y << " " << min_pt_3d.z << std::endl;
+    ROS_INFO_STREAM("min_pt_3d: " << min_pt_3d.x << " " << min_pt_3d.y << " " << min_pt_3d.z << std::endl);
     cv::Point2d min_pt;
     min_pt = cam_model_.project3dToPixel(min_pt_3d);
 
@@ -155,11 +127,11 @@ cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_ca
     tf::Vector3 camera_max_pt_3d = tf_to_cam * world_max_pt_3d;
 
     cv::Point3d max_pt_3d(camera_max_pt_3d.x(), camera_max_pt_3d.y(), camera_max_pt_3d.z());
-    std::cout << "max_pt_3d: " << max_pt_3d.x << " " << max_pt_3d.y << " " << max_pt_3d.z << std::endl;
+    ROS_INFO_STREAM("max_pt_3d: " << max_pt_3d.x << " " << max_pt_3d.y << " " << max_pt_3d.z << std::endl);
     cv::Point2d max_pt;
     max_pt = cam_model_.project3dToPixel(max_pt_3d);
 
-    cout << "---> pre-cropping image bounds: " << min_pt.x << ", " << max_pt.x << ", " << min_pt.y << ", " << max_pt.y << endl;
+    ROS_INFO_STREAM("---> pre-cropping image bounds: " << min_pt.x << ", " << max_pt.x << ", " << min_pt.y << ", " << max_pt.y << endl);
 
     //Generate image crop
     img_x_min = max(0, (int) min(min_pt.x, max_pt.x));
@@ -167,7 +139,7 @@ cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_ca
     img_x_max = min(1920, (int) max(min_pt.x, max_pt.x));
     img_y_max = min(1080, (int) max(min_pt.y, max_pt.y));
 
-    cout << "---> cropping image bounds: " << img_x_min << ", " << img_x_max << ", " << img_y_min << ", " << img_y_max << endl;
+    ROS_INFO_STREAM("---> cropping image bounds: " << img_x_min << ", " << img_x_max << ", " << img_y_min << ", " << img_y_max << endl);
 
     _pxMin = img_x_min;
     _pyMin = img_y_min;
@@ -175,9 +147,10 @@ cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_ca
     return rect;
 }
 
-int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
+bool findBlocks(std::vector<block_recognition::DetectedBlock>& detected_blocks)
 {
-    if (!rgbInit || !cam_info_init) return -1;
+    if (!rgbInit || !cam_info_init)
+        return false;
 
     tf::StampedTransform transform;
     tf::StampedTransform transform_world_to_camera;
@@ -254,13 +227,13 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
     pcl::EuclideanClusterExtraction<pcl::PointXYZRGB> ec;
     ec.setClusterTolerance(0.02); // 2cm
     ec.setMinClusterSize(100);
-//    ec.setMaxClusterSize(25000);
+
     ec.setSearchMethod(tree);
     ec.setInputCloud(cloud_filtered_xyz);
     ec.extract(cluster_indices);
 
     // find center of mass of each cluster
-    std::cout << "found " << cluster_indices.size() << " clusters..." << std::endl;
+    ROS_INFO_STREAM("found " << cluster_indices.size() << " clusters..." << std::endl);
     std::vector<pcl::PointXYZ> object_centers;
     for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
     {
@@ -310,7 +283,7 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
     vector<vector<Point> > contours;
     vector<Vec4i> hierarchy;
 
-    std::cout << "---------- detect edges ----------" << std::endl;
+    ROS_INFO_STREAM("---------- detect edges ----------" << std::endl);
     /// Detect edges using canny
     int thresh = 90;
     Canny( src_binary, canny_output, thresh, thresh*3, 3 );
@@ -331,7 +304,8 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
         mc[i] = Point2f( mu[i].m10/mu[i].m00 , mu[i].m01/mu[i].m00 );
     }
 
-    std::cout << "found " << contours.size() << " contours..." << std::endl;
+    ROS_INFO_STREAM("found " << contours.size() << " contours..." << std::endl);
+    int unique_block_id = 0;
 
     /// Find orientation and draw contours
     for( int i = 0; i < contours.size(); i++ ) {
@@ -341,8 +315,8 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
         float rectArea = minRect[i].size.width * minRect[i].size.height; // Ignore tiny contours found from noise in image (like a dent in foam)
         //if (mu[i].m00 < 500) continue; // use rectArea, moments sometimes returns too small for some reason
         if (rectArea < 600) continue;
-        std::cout << "clusters left: " << object_centers.size() << std::endl;
-        std::cout << "area " << i << ": " << mu[i].m00 << " vs rectArea: " << rectArea << std::endl;
+        ROS_INFO_STREAM("clusters left: " << object_centers.size() << std::endl);
+        ROS_INFO_STREAM("area " << i << ": " << mu[i].m00 << " vs rectArea: " << rectArea << std::endl);
 
         Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
 
@@ -369,7 +343,7 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
         // index into point cloud to get position of center of mass
         // TODO: figure out why sometimes mc is Nan?
         if (isnan(mc[i].x) || isnan(mc[i].y)) {
-            std::cout << "contour " << i << " is nan!" << std::endl;
+            ROS_INFO_STREAM("contour " << i << " is nan!" << std::endl);
             continue;
         }
         int px = pxMin + mc[i].x;
@@ -400,82 +374,87 @@ int findBlocks(list<boost::shared_ptr<PointSetShape> >& out)
         cam_pt.setY(object_centers[min_idx].y);
         cam_pt.setZ(object_centers[min_idx].z);
         cam_pt = tf_to_cam * cam_pt; // transform into camera frame
-        std::cout << "x: " << cam_pt.x() << ", y: " << cam_pt.y() << ", z: " << cam_pt.z() << std::endl;
+        ROS_INFO_STREAM("x: " << cam_pt.x() << ", y: " << cam_pt.y() << ", z: " << cam_pt.z() << std::endl);
 
         float sinTheta = sin(rotation * KDL::deg2rad);
         float cosTheta = cos(rotation * KDL::deg2rad);
-        double rigid_transform[12];
-        // Rotational part
-        rigid_transform[0] = cosTheta;  rigid_transform[1] = -sinTheta; rigid_transform[2] = 0;
-        rigid_transform[3] = sinTheta;  rigid_transform[4] = cosTheta;  rigid_transform[5] = 0;
-        rigid_transform[6] = 0;         rigid_transform[7] = 0;         rigid_transform[8] = 1;
-        // The translation
-        rigid_transform[9]  = cam_pt.x();
-        rigid_transform[10] = cam_pt.y();
-        rigid_transform[11] = cam_pt.z();
 
-        UserData *block_user_data;
+        block_recognition::DetectedBlock detected_block;
+
+        // Get header from cloud
+        detected_block.pose_stamped.header = pcl_conversions::fromPCL(cloud->header);
+
+        // Get rotation matrix
+        tf::Matrix3x3 rot_m =  tf::Matrix3x3(
+        cosTheta,-sinTheta,0,
+        sinTheta,cosTheta,0,
+        0,0,1);
+        tf::Quaternion rot_q;
+        rot_m.getRotation(rot_q);
+        tf::quaternionTFToMsg(rot_q, detected_block.pose_stamped.pose.orientation);
+
+        //Apply position information
+        detected_block.pose_stamped.pose.position.x = cam_pt.x();
+        detected_block.pose_stamped.pose.position.y = cam_pt.y();
+        detected_block.pose_stamped.pose.position.z = cam_pt.z();
+
         if (rectArea > 7000) {
-            block_user_data = block_user_data_large;
+            detected_block.mesh_filename = block_user_data_large;
+            detected_block.edge_length = 0.076;
         } else if (rectArea < 4500) {
-            block_user_data = block_user_data_small;
+            detected_block.mesh_filename = block_user_data_small;
+            detected_block.edge_length = 0.050;
         } else {
-            block_user_data = block_user_data_medium;
+            detected_block.mesh_filename = block_user_data_medium;
+            detected_block.edge_length = 0.064;
         }
-        //block_user_data = block_user_data_small;
-        boost::shared_ptr<PointSetShape> shape = boost::make_shared<PointSetShape>(block_user_data, block_model_data, rigid_transform, block_model_data);
-        out.push_back(shape);
+
+        // Camera to center of box. Because Moveit does not add boxes with the TF at the base of the box
+        KDL::Frame pose;
+        tf::poseMsgToKDL(detected_block.pose_stamped.pose, pose);
+        KDL::Frame rot = KDL::Frame(KDL::Rotation::RotX(KDL::PI), KDL::Vector(0,0,detected_block.edge_length/2.0));
+        KDL::Frame newPose = pose * rot;
+        tf::poseKDLToMsg(newPose, detected_block.pose_stamped.pose);
+//        tf::poseKDLToMsg(pose, detected_block.pose_stamped.pose);
+
+        detected_block.unique_block_name = std::string("block") + std::to_string(unique_block_id);
+        detected_block.unique_id = unique_block_id++;
+
+        detected_blocks.push_back(detected_block);
 
         object_centers.erase(object_centers.begin() + min_idx); // make sure not to reuse the same cluster again
     }
 
-    /// Show in a window for debugging
-    namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
-    imshow( "Contours", croppedImg );
-
-    //namedWindow( "Gray", CV_WINDOW_AUTOSIZE );
-    //imshow( "Gray", src_gray );
-
-    namedWindow( "binary", CV_WINDOW_AUTOSIZE );
-    imshow( "binary", src_binary );
-
-    namedWindow( "canny", CV_WINDOW_AUTOSIZE );
-    imshow( "canny", canny_output );
-
-    return 0;
+    return true;
 }
 
-void publish_markers(const block_recognition::RecognizedObjects &objects_msg)
+
+void publish_detected_blocks_as_marker(const std::vector<block_recognition::DetectedBlock> detected_blocks)
 {
     visualization_msgs::MarkerArray marker_array;
-    int id = 0;
 
-    for(std::vector<block_recognition::PointSetShape>::const_iterator it = objects_msg.objects.begin();
-            it != objects_msg.objects.end();
-            ++it)
-    {
+    for(auto detected_block : detected_blocks) {
         visualization_msgs::Marker marker;
 
-        marker.header = objects_msg.header;
-        marker.type = visualization_msgs::Marker::MESH_RESOURCE;
+        marker.header = detected_block.pose_stamped.header;
+        marker.type = visualization_msgs::Marker::CUBE;
         marker.action = visualization_msgs::Marker::ADD;
         marker.lifetime = ros::Duration(20.0);
         marker.ns = "objrec";
-        marker.id = 0;
 
-        marker.scale.x = 1.0;
-        marker.scale.y = 1.0;
-        marker.scale.z = 1.0;
+        // Add scaling factor based on the size of the cube
+        marker.scale.x = detected_block.edge_length;
+        marker.scale.y = detected_block.edge_length;
+        marker.scale.z = detected_block.edge_length;
 
         marker.color.a = 0.75;
         marker.color.r = 1.0;
         marker.color.g = 0.1;
         marker.color.b = 0.3;
 
-        marker.id = id++;
-        marker.pose = it->pose;
+        marker.id = detected_block.unique_id;
+        marker.pose = detected_block.pose_stamped.pose;
 
-        marker.mesh_resource = block_model_stl;
         marker_array.markers.push_back(marker);
     }
 
@@ -486,160 +465,16 @@ void publish_markers(const block_recognition::RecognizedObjects &objects_msg)
 
 bool recognizeBlocks(block_recognition::FindObjects::Request &req, block_recognition::FindObjects::Response &res)
 {
-    std::list<boost::shared_ptr<PointSetShape> > detected_models;
-    int failure = findBlocks(detected_models);
     // No objects recognized
-    if (failure) {
+    if (!findBlocks(res.detected_blocks)) {
         return false;
     }
 
-    // Construct recognized objects message
-    block_recognition::RecognizedObjects objects_msg;
-    objects_msg.header.stamp = pcl_conversions::fromPCL(cloud->header).stamp;
-    objects_msg.header.frame_id = cloud->header.frame_id;
-
-    std::cout << "publishing " << detected_models.size() << "models..." << objects_msg.header.frame_id << std::endl;
-    for(std::list<boost::shared_ptr<PointSetShape> >::iterator it = detected_models.begin();
-            it != detected_models.end();
-            ++it)
-    {
-        boost::shared_ptr<PointSetShape> detected_model = *it;
-
-        // Construct and populate a message
-        block_recognition::PointSetShape pss_msg;
-        pss_msg.label = detected_model->getUserData()->getLabel();
-        pss_msg.confidence = detected_model->getConfidence();
-        array_to_pose(detected_model->getRigidTransform(), pss_msg.pose);
-
-        // Transform into the world frame TODO: make this frame a parameter // keeping in camera frame?
-        geometry_msgs::PoseStamped pose_stamped_in, pose_stamped_out;
-        pose_stamped_in.header = pcl_conversions::fromPCL(cloud->header);
-        pose_stamped_in.pose = pss_msg.pose;
-
-        KDL::Frame pose;
-        tf::poseMsgToKDL(pss_msg.pose, pose);
-        KDL::Frame rot = KDL::Frame(KDL::Rotation::RotX(-(KDL::PI)/2.0), KDL::Vector(0,0,0));
-        KDL::Frame newPose = pose * rot;
-        tf::poseKDLToMsg(newPose, pss_msg.pose);
-
-        objects_msg.objects.push_back(pss_msg);
-    }
-
-    // Publish the visualization markers
-    publish_markers(objects_msg);
-
-    // Publish the recognized objects
-    objects_pub_.publish(objects_msg);
-
-    for(std::vector<block_recognition::PointSetShape>::const_iterator it = objects_msg.objects.begin();
-            it != objects_msg.objects.end();
-            ++it)
-    {
-        block_recognition::PointSetShape object = *it;
-        res.object_name.push_back(object.label);
-        res.object_pose.push_back(object.pose);
-    }
+    ROS_INFO_STREAM("publishing " << res.detected_blocks.size() << "models..." << pcl_conversions::fromPCL(cloud->header).stamp << std::endl);
+    publish_detected_blocks_as_marker(res.detected_blocks);
 
     ROS_INFO("sending back response ");
     return true;
-}
-
-vtkSmartPointer<vtkPolyData> scale_vtk_model(vtkSmartPointer<vtkPolyData> & m, double scale = 1.0/1000.0)
-{
-  vtkSmartPointer<vtkTransform> transp = vtkSmartPointer<vtkTransform>::New();
-  transp->Scale(scale, scale, scale);
-  vtkSmartPointer<vtkTransformPolyDataFilter> tpd = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
-#if VTK_MAJOR_VERSION <= 5
-  tpd->SetInput(m);
-#else
-  tpd->SetInputData(m);
-#endif
-  tpd->SetTransform(transp);
-  tpd->Update();
-  return tpd->GetOutput();
-}
-
-void load_block_model()
-{
-    ROS_INFO_STREAM("Loading block only...");
-
-    std::string model_label = "block";//Change this based on size
-
-    // Get the mesh uri & store it
-    std::string param_name = "model_uris/"+model_label;
-    if(!n->getParam(param_name, block_model_vtk)) {
-        ROS_FATAL_STREAM("Required parameter not found! Namespace: "<<n->getNamespace()<<" Parameter: "<<param_name);
-        throw ros::InvalidParameterException("Parameter not found!");
-    }
-    param_name = "stl_uris/"+model_label;
-    if(!n->getParam(param_name, block_model_stl)) {
-        ROS_FATAL_STREAM("Required parameter not found! Namespace: "<<n->getNamespace()<<" Parameter: "<<param_name);
-        throw ros::InvalidParameterException("Parameter not found!");
-    }
-
-    ROS_INFO_STREAM("Adding model \""<<model_label<<"\" from "<<block_model_vtk);
-    // Fetch the model data with a ros resource retriever
-    resource_retriever::Retriever retriever;
-    resource_retriever::MemoryResource resource;
-
-    try {
-        resource = retriever.get(block_model_vtk);
-    } catch (resource_retriever::Exception& e) {
-        ROS_ERROR_STREAM("Failed to retrieve \""<<model_label<<"\" model file from \""<<block_model_vtk<<"\" error: "<<e.what());
-        return;
-    }
-
-    // Load the model into objrec
-    vtkSmartPointer<vtkPolyDataReader> reader =
-        vtkSmartPointer<vtkPolyDataReader>::New();
-    // This copies the data from the resource structure into the polydata reader
-    reader->SetBinaryInputString(
-            (const char*)resource.data.get(),
-            resource.size);
-    reader->ReadFromInputStringOn();
-    reader->Update();
-    readers_.push_back(reader);
-
-    // Get the VTK normals
-    vtkSmartPointer<vtkPolyData> polydata(reader->GetOutput());
-    vtkSmartPointer<vtkFloatArray> point_normals(
-            vtkFloatArray::SafeDownCast(polydata->GetPointData()->GetNormals()));
-
-    if(!point_normals) {
-        ROS_ERROR_STREAM("No vertex normals for mesh: "<<block_model_vtk);
-        return;
-    }
-
-    // Get the VTK points
-    size_t n_points = polydata->GetNumberOfPoints();
-    size_t n_normals = point_normals->GetNumberOfTuples();
-
-    if(n_points != n_normals) {
-        ROS_ERROR_STREAM("Different numbers of vertices and vertex normals for mesh: "<<block_model_vtk);
-        return;
-    }
-
-    // This is just here for reference
-    for(vtkIdType i = 0; i < n_points; i++)
-    {
-        double pV[3];
-        double pN[3];
-
-        polydata->GetPoint(i, pV);
-        point_normals->GetTuple(i, pN);
-    }
-
-    // Create new model user data
-    block_user_data_small = new UserData();
-    block_user_data_small->setLabel("block_50");
-    block_user_data_medium = new UserData();
-    block_user_data_medium->setLabel("block_64");
-    block_user_data_large = new UserData();
-    block_user_data_large->setLabel("block_76");
-
-    vtkSmartPointer<vtkPolyData> model_data = reader->GetOutput();
-    block_model_data = scale_vtk_model(model_data);
-
 }
 
 int main(int argc, char **argv)
@@ -667,9 +502,6 @@ int main(int argc, char **argv)
 
     ros::Subscriber cam_info_sub = n->subscribe("/kinect2/hd/camera_info", 1, saveCamInfo);
 
-    load_block_model();
-
-    objects_pub_ = n->advertise<block_recognition::RecognizedObjects>("recognized_objects",20);
     markers_pub_ = n->advertise<visualization_msgs::MarkerArray>("recognized_objects_markers",20);
 
     ros::ServiceServer find_blocks_server_ = n->advertiseService("find_blocks", recognizeBlocks);

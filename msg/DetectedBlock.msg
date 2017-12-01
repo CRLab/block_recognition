@@ -1,0 +1,6 @@
+string unique_block_name
+geometry_msgs/PoseStamped pose_stamped
+sensor_msgs/PointCloud2 pointcloud
+float32 edge_length
+string mesh_filename
+int32 unique_id
