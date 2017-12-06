@@ -2,7 +2,7 @@
 <package>
   <name>block_recognition</name>
   <version>0.0.0</version>
-  <description>The block_recognition package</description>
+  <description>Recognize blocks from a downward facing depth camera</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
