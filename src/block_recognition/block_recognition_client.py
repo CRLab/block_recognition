@@ -4,15 +4,21 @@ import typing
 import rospy
 
 
-class BlockRecognitionClient():
-    def __init__(self):
-        pass
+def wait_for_service(timeout=10):
+    # type: () -> bool
+    try:
+        rospy.wait_for_service('/objrec_node/find_blocks', timeout=timeout)
+    except rospy.ROSException as e:
+        return False
 
-    def find_blocks(self):
-        # type: () -> typing.List[block_recognition.msg.DetectedBlock]
+    return True
 
-        service_proxy = rospy.ServiceProxy('/objrec_node/find_blocks', block_recognition.srv.FindObjects)
-        service_proxy.wait_for_service(timeout=5)
-        resp = service_proxy()
 
-        return resp.detected_blocks
+def find_blocks():
+    # type: () -> typing.List[block_recognition.msg.DetectedBlock]
+
+    service_proxy = rospy.ServiceProxy('/objrec_node/find_blocks', block_recognition.srv.FindObjects)
+    service_proxy.wait_for_service(timeout=5)
+    resp = service_proxy()
+
+    return resp.detected_blocks
