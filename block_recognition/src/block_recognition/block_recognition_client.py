@@ -1,5 +1,5 @@
-import block_recognition.srv
-import block_recognition.msg
+import block_recognition_msgs.srv
+import block_recognition_msgs.msg
 import typing
 import rospy
 
@@ -15,9 +15,9 @@ def wait_for_service(timeout=10):
 
 
 def find_blocks():
-    # type: () -> typing.List[block_recognition.msg.DetectedBlock]
+    # type: () -> typing.List[block_recognition_msgs.msg.DetectedBlock]
 
-    service_proxy = rospy.ServiceProxy('/objrec_node/find_blocks', block_recognition.srv.FindObjects)
+    service_proxy = rospy.ServiceProxy('/objrec_node/find_blocks', block_recognition_msgs.srv.FindObjects)
     service_proxy.wait_for_service(timeout=5)
     resp = service_proxy()
 

@@ -5,8 +5,7 @@ add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS roscpp tf geometry_msgs kdl_conversions
   visualization_msgs sensor_msgs pcl_ros pcl_conversions resource_retriever
-  nodelet message_generation
-  image_transport cv_bridge image_geometry)
+  nodelet block_recognition_msgs image_transport cv_bridge image_geometry)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -15,24 +14,24 @@ catkin_python_setup()
 
 ## System dependencies are found with CMake's conventions
 
-add_message_files(
-FILES
-DetectedBlock.msg
-)
+# add_message_files(
+# FILES
+# DetectedBlock.msg
+# )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  FindObjects.srv
-)
+# add_service_files(
+#   FILES
+#   FindObjects.srv
+# )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-  geometry_msgs
-  sensor_msgs
-)
+# generate_messages(
+#   DEPENDENCIES
+#   std_msgs
+#   geometry_msgs
+#   sensor_msgs
+# )
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -75,7 +74,7 @@ add_executable(${PROJECT_NAME}_node src/block_recognition_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} block_recognition_generate_messages_cpp)
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 MESSAGE( STATUS "catkin_LIBRARIES " ${catkin_LIBRARIES} )
 

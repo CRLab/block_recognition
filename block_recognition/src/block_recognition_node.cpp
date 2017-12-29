@@ -18,7 +18,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
-#include <block_recognition/FindObjects.h>
+#include <block_recognition_msgs/FindObjects.h>
 
 #include <tf_conversions/tf_kdl.h>
 #include <resource_retriever/retriever.h>
@@ -29,7 +29,7 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/kdtree.h>
 
-#include <block_recognition/DetectedBlock.h>
+#include <block_recognition_msgs/DetectedBlock.h>
 
 #include <ros/package.h>
 
@@ -147,7 +147,7 @@ cv::Rect getImageRectTransform(int &_pxMin, int &_pyMin, tf::Transform &tf_to_ca
     return rect;
 }
 
-bool findBlocks(std::vector<block_recognition::DetectedBlock>& detected_blocks)
+bool findBlocks(std::vector<block_recognition_msgs::DetectedBlock>& detected_blocks)
 {
     if (!rgbInit || !cam_info_init)
         return false;
@@ -379,7 +379,7 @@ bool findBlocks(std::vector<block_recognition::DetectedBlock>& detected_blocks)
         float sinTheta = sin(rotation * KDL::deg2rad);
         float cosTheta = cos(rotation * KDL::deg2rad);
 
-        block_recognition::DetectedBlock detected_block;
+        block_recognition_msgs::DetectedBlock detected_block;
 
         // Get header from cloud
         detected_block.pose_stamped.header = pcl_conversions::fromPCL(cloud->header);
@@ -429,7 +429,7 @@ bool findBlocks(std::vector<block_recognition::DetectedBlock>& detected_blocks)
 }
 
 
-void publish_detected_blocks_as_marker(const std::vector<block_recognition::DetectedBlock> detected_blocks)
+void publish_detected_blocks_as_marker(const std::vector<block_recognition_msgs::DetectedBlock> detected_blocks)
 {
     visualization_msgs::MarkerArray marker_array;
 
@@ -463,7 +463,7 @@ void publish_detected_blocks_as_marker(const std::vector<block_recognition::Dete
 }
 
 
-bool recognizeBlocks(block_recognition::FindObjects::Request &req, block_recognition::FindObjects::Response &res)
+bool recognizeBlocks(block_recognition_msgs::FindObjects::Request &req, block_recognition_msgs::FindObjects::Response &res)
 {
     // No objects recognized
     if (!findBlocks(res.detected_blocks)) {
